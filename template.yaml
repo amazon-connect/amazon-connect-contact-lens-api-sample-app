@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  " Deploys the AWS resources required to demonstrate the use case in the Contact Center Blog - Use Real-Time Contact Lens to deliver AI powered context on agent transfers
+  - Node.js Lambda function triggered by Amazon Connect to get real-time call analytics from Contact Lens
+  - Node.js Lambda functions triggered by CloudFormation to create contact flows and a quick connect
+  - Creates a custom resource to trigger the CreateContactFlows Lambda function"
+
+Mappings:
+  FunctionMap:
+    Configuration:
+      S3Bucket: "amazon-connect-clrt-blog-assets"
+      S3Key: "aws-lambda-functions.zip"
+
+Parameters:
+  instanceIdParam:
+    Type: String
+    AllowedPattern: '\w{8}-\w{4}-\w{4}-\w{4}-\w{12}'
+    ConstraintDescription: "Invalid Amazon Connect instance Id"
+    Description: Amazon Connect Instance ID (Ensure you it is entered accurately in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx ).
+  basicQueueArnParam:
+    Type: String
+    ConstraintDescription: "Invalid Amazon Connect Queue ARN"
+    Description: Basic Queue ARN.
+  fraudQueueArnParam:
+    Type: String
+    ConstraintDescription: "Invalid Amazon Connect Queue ARN"
+    Description: Fraud Queue ARN.
+
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Amazon Connect Configuration
+        Parameters:
+          - instanceIdParam
+          - basicQueueArnParam
+          - fraudQueueArnParam
+    ParameterLabels:
+      instanceIdParam:
+        default: Instance ID
+      basicQueueArnParam:
+        default: Basic Queue ARN
+      fraudQueueArnParam:
+        default: Fraud Queue ARN
+
+Outputs:
+  getRealTimeCallAnalyticsFromContactLens:
+    Description:  >
+        Lambda function triggered by Amazon Connect to get real-time call analytics from Contact Lens.
+    Value: !Ref getRealTimeCallAnalyticsFromContactLens
+  getRealTimeCallAnalyticsFromContactLensARN:
+    Description:  ARN for the GetRealTimeCallAnalyticsFromContactLensFunction
+    Value: !GetAtt getRealTimeCallAnalyticsFromContactLens.Arn
+  createContactFlows:
+    Description:  >
+        Lambda function triggered by CFT to create Contact Flows.
+    Value: !Ref CreateContactFlows
+  createAgentWhisperFlowARN:
+    Description:  ARN for the CreateAgentWhisperFlowFunction
+    Value: !GetAtt CreateContactFlows.Arn
+
+Resources:
+    allowConnectToLambda:
+        Type: 'AWS::Lambda::Permission'
+        Properties:
+            FunctionName: !Ref getRealTimeCallAnalyticsFromContactLens
+            Action: 'lambda:InvokeFunction'
+            Principal: connect.amazonaws.com
+            SourceAccount: !Ref 'AWS::AccountId'
+    GetRealTimeCallAnalyticsFromContactLensRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+          AssumeRolePolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Principal:
+                  Service:
+                    - "lambda.amazonaws.com"
+                Action:
+                  - "sts:AssumeRole"
+          Path: "/"
+          Policies:
+            -
+              PolicyName: !Sub ${AWS::StackName}-realtime-call-analytics-from-contactLens-policy
+              PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                  -
+                    Effect: "Allow"
+                    Action:
+                      - 'logs:CreateLogGroup'
+                      - 'logs:CreateLogStream'
+                      - 'logs:PutLogEvents'
+                    Resource:
+                      - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                  -
+                    Effect: "Allow"
+                    Action:
+                      - 'connect:*'
+                    Resource:
+                      - "*"
+    getRealTimeCallAnalyticsFromContactLens:
+      Type: "AWS::Lambda::Function"
+      Properties:
+        Description: Lambda function triggered by Amazon Connect to get real-time call analytics from Contact Lens.
+        Runtime: nodejs12.x
+        Role: !GetAtt GetRealTimeCallAnalyticsFromContactLensRole.Arn
+        Handler: get-realtime-call-analytics-from-contactlens.handler
+        MemorySize: 128
+        Timeout: 30
+        Code: ./aws-resources-creator/        
+
+    CreateContactFlowsRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+          AssumeRolePolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Principal:
+                  Service:
+                    - "lambda.amazonaws.com"
+                Action:
+                  - "sts:AssumeRole"
+          Path: "/"
+          Policies:
+            -
+              PolicyName: !Sub ${AWS::StackName}-create-contact-flows-policy
+              PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                  -
+                    Effect: "Allow"
+                    Action:
+                      - 'logs:CreateLogGroup'
+                      - 'logs:CreateLogStream'
+                      - 'logs:PutLogEvents'
+                    Resource:
+                      - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                  -
+                    Effect: "Allow"
+                    Action:
+                      - 'connect:*'
+                    Resource:
+                      - "*"
+    CreateContactFlows:
+      Type: "AWS::Lambda::Function"
+      Properties:
+        Description: Lambda function triggered by CFT to create Contact Flows.
+        Runtime: nodejs12.x
+        Role: !GetAtt CreateContactFlowsRole.Arn
+        Handler: create-contact-flows.handler
+        MemorySize: 128
+        Timeout: 30
+        Environment:
+            Variables:
+                CONNECT_INSTANCE_ID: !Ref instanceIdParam
+        Code: ./aws-resources-creator/        
+
+    CreateContactFlowsLambdaRun:
+      Type: Custom::CreateContactFlowsLambdaRun
+      Properties:
+        ServiceToken: !GetAtt CreateContactFlows.Arn
+        LAMBDA_FUNCTION_ARN: !GetAtt getRealTimeCallAnalyticsFromContactLens.Arn
+        BASIC_QUEUE_ARN: !Ref basicQueueArnParam
+        FRAUD_QUEUE_ARN: !Ref fraudQueueArnParam
+        AGENT_WHISPER_FLOW_NAME: !Sub ${AWS::StackName}-CLRT-Agent-Whisper-Flow
+        QUEUE_TRANSFER_FLOW_NAME: !Sub ${AWS::StackName}-CLRT-Queue-Transfer-Flow
+        CONTACT_FLOW_NAME: !Sub ${AWS::StackName}-CLRT-Contact-Flow
+        QUICK_CONNECT_NAME: !Sub ${AWS::StackName}-CLRT-Quick-Connect
+
+        

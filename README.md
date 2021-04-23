@@ -1,17 +1,17 @@
-## My Project
 
-TODO: Fill this README out!
+# Amazon Connect Real-Time Contact Lens demo  
 
-Be sure to:
+Source code for the blog [Use Contact Lens for Amazon Connect to streamline call transfers with real-time AI powered insights](https://aws.amazon.com/blogs/contact-center/use-real-time-contact-lens-to-deliver-ai-powered-context-on-agent-transfers/).
 
-* Change the title in this README
-* Edit your repository description on GitHub
 
-## Security
+## Usage
+Use `sam` to build, invoke and deploy the function.
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+##### SAM Build:
+Ensure you are in the root folder
 
-## License
+`sam build --use-container`
 
-This library is licensed under the MIT-0 License. See the LICENSE file.
-
+##### SAM Deploy:
+`sam deploy --guided` 
+Follow the on-screen prompts. To accept the default options provided in the interactive experience, respond with Enter.
